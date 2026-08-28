@@ -2155,6 +2155,7 @@ async function createGist(token){
     ghToken = token; ghGistId = data.id;
     try{ localStorage.setItem(GH_TOKEN_KEY, ghToken); localStorage.setItem(GH_GIST_KEY, ghGistId); }catch(e){}
     syncStatus = 'synced'; updateSyncIndicator();
+    startCloudSyncPolling();
     return ghGistId;
   }catch(e){ syncStatus = 'error'; updateSyncIndicator(); console.error('createGist failed:', e); return null; }
 }
@@ -2181,15 +2182,17 @@ async function linkExistingGist(token, gistId){
   localSave();
   render();
   showToast(cloud ? '✅ اطلاعات از Gist آورده شد' : '✅ این دستگاه وصل شد');
+  startCloudSyncPolling();
   return true;
 }
 function unlinkSync(){
   ghToken = null; ghGistId = null;
   try{ localStorage.removeItem(GH_TOKEN_KEY); localStorage.removeItem(GH_GIST_KEY); }catch(e){}
   syncStatus = 'idle';
+  clearInterval(cloudSyncPollTimer);
   updateSyncIndicator();
 }
-async function initCloudSync(){
+async function initCloudSync(silent){
   if(hasWindowStorage()) return; // Artifact Storage already handles sync in that context
   if(!ghAuth()) return;
   const cloud = await cloudPull();
@@ -2201,11 +2204,29 @@ async function initCloudSync(){
     applyStateDefaults();
     localSave();
     render();
-    showToast('☁️ آخرین نسخه از Gist آورده شد');
+    if(!silent) showToast('☁️ آخرین نسخه از Gist آورده شد');
   } else if(localTime > cloudTime){
     cloudPush();
   }
 }
+// Without this, a change pushed from one device only ever reaches another
+// device the next time that device's page happens to reload — which is
+// what made sync look like it "stopped working" after the first link-up.
+// Poll in the background while a Gist is linked, and also re-check the
+// instant the tab/app comes back to the foreground (e.g. switching back to
+// Safari on the iPad), so both devices stay caught up without a refresh.
+let cloudSyncPollTimer = null;
+function startCloudSyncPolling(){
+  if(hasWindowStorage()) return;
+  clearInterval(cloudSyncPollTimer);
+  if(!ghAuth()) return;
+  cloudSyncPollTimer = setInterval(()=>{ if(ghAuth()) initCloudSync(true); }, 45000);
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && !hasWindowStorage() && ghAuth()){
+    initCloudSync(true);
+  }
+});
 function openSyncModal(){
   const overlay = document.getElementById('overlay');
   const modal = document.getElementById('modal');
@@ -2269,6 +2290,7 @@ function openSyncModal(){
   const syncNowBtn = document.getElementById('sync-now-btn');
   if(syncNowBtn) syncNowBtn.addEventListener('click', async ()=>{
     syncNowBtn.disabled = true;
+    await initCloudSync();
     await cloudPush();
     showToast(syncStatus==='synced' ? '✅ sync شد' : '⚠️ الان وصل نشد — کنسول رو چک کن');
     syncNowBtn.disabled = false;
@@ -2663,6 +2685,7 @@ function load(){
   render();
   initArtifactStorage();
   initCloudSync();
+  startCloudSyncPolling();
 }
 function localSave(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
 function save(){
