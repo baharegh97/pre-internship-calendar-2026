@@ -247,6 +247,10 @@ html[data-theme="dark"] .day .num{ background:rgba(0,0,0,0.18);}
 .meta-input{ width:56px; font-size:14px; padding:6px 8px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); font-weight:600; }
 .meta-input:focus{ outline:none; border-color:var(--p-v7-b);}
 .meta-time-display{ min-width:56px; font-size:14px; padding:6px 8px; border-radius:7px; border:1px dashed var(--border); background:var(--bg); color:var(--text); font-weight:700; display:inline-block; text-align:center; }
+.meta-toggles{ display:flex; gap:6px; flex-wrap:wrap;}
+.meta-toggle-chip{ font-size:11.5px; padding:5px 11px; border-radius:999px; background:var(--card); border:1.5px solid var(--border); color:var(--text2); box-shadow:none; font-weight:600;}
+.meta-toggle-chip:hover{ border-color:var(--p-mint-b); color:var(--p-mint-t); background:var(--card);}
+.meta-toggle-chip.active{ background:var(--p-mint); border-color:var(--p-mint-b); color:var(--p-mint-t);}
 .meta-time-input{ width:120px; }
 .link-open{ font-size:13px; text-decoration:none; flex-shrink:0; line-height:1; margin-left:4px; display:inline-block; color:var(--p-v7-t); }
 .link-open.link-off{ display:none;}
@@ -474,6 +478,8 @@ html[data-theme="dark"] .next-step-subtask{ background:rgba(0,0,0,0.18); }
 .link-entry-open{ flex-shrink:0; padding:6px 14px; border-radius:999px; font-size:12px; font-weight:700; background:var(--p-mint); border-color:var(--p-mint-b); color:var(--p-mint-t); text-decoration:none; }
 .links-empty{ padding:40px 20px; text-align:center; color:var(--text2); font-size:13.5px;}
 .round-log-count{ flex-shrink:0; padding:6px 14px; border-radius:999px; font-size:12px; font-weight:800; background:var(--p-mint); border:1px solid var(--p-mint-b); color:var(--p-mint-t); white-space:nowrap; }
+.round-log-badge{ flex-shrink:0; padding:5px 12px; border-radius:999px; font-size:11.5px; font-weight:700; background:var(--bg); border:1px solid var(--border); color:var(--text2); white-space:nowrap; }
+.round-log-badge.active{ background:var(--p-sky); border-color:var(--p-sky-b); color:var(--p-sky-t); }
 .sync-code-box{ text-align:center; padding:16px; margin:14px 0; border-radius:10px; background:var(--p-butter); border:1.5px dashed var(--p-butter-b); }
 .sync-code-label{ font-size:11px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;}
 .sync-code-value{ font-family:'Courier New',monospace; font-size:20px; font-weight:800; color:var(--p-butter-t); letter-spacing:1px; word-break:break-all;}
@@ -825,7 +831,7 @@ html[data-theme="dark"] body {
       <button class="lh-item" id="board-view-btn">🗂️ Board</button>
       <button class="lh-item" id="timer-log-btn">⏱️ Study Log</button>
       <button class="lh-item" id="links-page-btn">🔗 Links</button>
-      <button class="lh-item" id="round-log-page-btn">🔁 لاگ دور مطالعه</button>
+      <button class="lh-item" id="round-log-page-btn">📊 لاگ مطالعه</button>
       <button class="lh-item" id="redistribute-btn">🔀 Redistribute unfinished</button>
     </div>
     <div class="lh-right">
@@ -930,10 +936,10 @@ html[data-theme="dark"] body {
 <div id="round-log-page" class="timer-log-page">
   <div class="timer-log-header">
     <button class="back-btn" id="round-log-back-btn">← Back to Calendar</button>
-    <h2 style="font-family:'Playfair Display','Shabnam',serif;font-size:22px;font-weight:800;margin:0;">🔁 لاگ دور مطالعه</h2>
+    <h2 style="font-family:'Playfair Display','Shabnam',serif;font-size:22px;font-weight:800;margin:0;">📊 لاگ مطالعه</h2>
     <span style="width:1px;"></span>
   </div>
-  <p class="sub">تعداد دورهایی که برای هر درس ثبت کردی، جدا از تقویم.</p>
+  <p class="sub">برای هر درس: چند دور خوندی، تست زدی یا نه، خلاصه داری یا نه — جدا از تقویم. از توی مودال هر روز، جلوی هر مبحث قابل ثبته.</p>
   <div class="links-search-row">
     <input type="text" id="round-log-search" placeholder="جست‌وجوی درس...">
   </div>
@@ -2048,6 +2054,232 @@ async function initArtifactStorage(){
     wsPush();
   }
 }
+/* ============================================================
+   Cross-device sync via a private GitHub Gist, for when this page
+   is hosted OUTSIDE Claude.ai (e.g. GitHub Pages) — window.storage
+   doesn't exist there. Data is stored as a JSON file in a private
+   Gist under your own GitHub account, using a Personal Access
+   Token (scope: gist). The token is entered once per device and
+   kept only in that device's localStorage — it's never put in a
+   URL or shared link, since anyone holding it could read/write the
+   Gist. The Gist ID itself is fine to note down/share between your
+   own devices since it's useless without the token.
+   If GitHub is ever unreachable, everything keeps working from
+   localStorage exactly as before — this is purely an enhancement.
+   ============================================================ */
+const GH_TOKEN_KEY = 'residency-calendar-gh-token';
+const GH_GIST_KEY = 'residency-calendar-gh-gist';
+const GH_FILENAME = 'residency-calendar-state.json';
+let ghToken = null, ghGistId = null;
+try{ ghToken = localStorage.getItem(GH_TOKEN_KEY) || null; }catch(e){}
+try{ ghGistId = localStorage.getItem(GH_GIST_KEY) || null; }catch(e){}
+let syncStatus = 'idle'; // idle | syncing | synced | error
+let syncPushTimer = null;
+function ghAuth(){ return (ghToken && ghGistId) ? { token:ghToken, gistId:ghGistId } : null; }
+function updateSyncIndicator(){
+  const btn = document.getElementById('sync-btn');
+  if(!btn || hasWindowStorage()) return; // the Artifact Storage path manages its own icon via #ws-status
+  const icons = { idle:'☁️', syncing:'🔄', synced:'✅', error:'⚠️' };
+  btn.textContent = (icons[syncStatus]||'☁️');
+  btn.title = ghAuth() ? ('GitHub sync: '+syncStatus) : 'Set up cross-device sync via GitHub';
+}
+function fetchWithTimeout(url, opts, ms){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms||10000);
+  return fetch(url, Object.assign({}, opts, {signal:ctrl.signal})).finally(()=>clearTimeout(t));
+}
+function ghHeaders(token, extra){
+  return Object.assign({
+    'Authorization': 'token '+token,
+    'Accept': 'application/vnd.github+json'
+  }, extra||{});
+}
+async function cloudPush(){
+  const auth = ghAuth();
+  if(!auth) return;
+  syncStatus = 'syncing'; updateSyncIndicator();
+  try{
+    const res = await fetchWithTimeout('https://api.github.com/gists/'+auth.gistId, {
+      method:'PATCH',
+      headers: ghHeaders(auth.token, {'Content-Type':'application/json'}),
+      body: JSON.stringify({ files: { [GH_FILENAME]: { content: JSON.stringify(buildCloudPayload()) } } })
+    });
+    syncStatus = res.ok ? 'synced' : 'error';
+    if(!res.ok) console.error('cloudPush: HTTP', res.status, await res.text());
+  }catch(e){ syncStatus = 'error'; console.error('cloudPush failed:', e); }
+  updateSyncIndicator();
+}
+function queueCloudPush(){
+  if(!ghAuth()) return;
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(cloudPush, 1800);
+}
+async function cloudPull(){
+  const auth = ghAuth();
+  if(!auth) return null;
+  syncStatus = 'syncing'; updateSyncIndicator();
+  try{
+    const res = await fetchWithTimeout('https://api.github.com/gists/'+auth.gistId, {
+      headers: ghHeaders(auth.token)
+    });
+    if(res.status===404) throw new Error('Gist not found (404) — check the Gist ID');
+    if(res.status===401 || res.status===403) throw new Error('HTTP '+res.status+' — token is invalid or missing the "gist" scope');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const file = data.files && data.files[GH_FILENAME];
+    if(!file){ syncStatus='synced'; updateSyncIndicator(); return null; } // gist exists but nothing pushed yet
+    let content = file.content;
+    if(file.truncated && file.raw_url){
+      // Files over ~1MB come back truncated from this endpoint — fetch the raw content instead.
+      const rawRes = await fetchWithTimeout(file.raw_url);
+      content = await rawRes.text();
+    }
+    syncStatus = 'synced'; updateSyncIndicator();
+    return content ? JSON.parse(content) : null;
+  }catch(e){ syncStatus = 'error'; updateSyncIndicator(); console.error('cloudPull failed:', e); return null; }
+}
+async function createGist(token){
+  syncStatus = 'syncing'; updateSyncIndicator();
+  try{
+    const res = await fetchWithTimeout('https://api.github.com/gists', {
+      method:'POST',
+      headers: ghHeaders(token, {'Content-Type':'application/json'}),
+      body: JSON.stringify({
+        description: 'Residency Study Calendar — sync data (do not edit manually)',
+        public: false,
+        files: { [GH_FILENAME]: { content: JSON.stringify(buildCloudPayload()) } }
+      })
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status+': '+(await res.text()));
+    const data = await res.json();
+    ghToken = token; ghGistId = data.id;
+    try{ localStorage.setItem(GH_TOKEN_KEY, ghToken); localStorage.setItem(GH_GIST_KEY, ghGistId); }catch(e){}
+    syncStatus = 'synced'; updateSyncIndicator();
+    return ghGistId;
+  }catch(e){ syncStatus = 'error'; updateSyncIndicator(); console.error('createGist failed:', e); return null; }
+}
+async function linkExistingGist(token, gistId){
+  const trimmedToken = (token||'').trim();
+  const trimmedGist = (gistId||'').trim().replace(/^https?:\/\/gist\.github\.com\/(?:[^/]+\/)?/,'');
+  if(!trimmedToken || !trimmedGist){
+    showToast('❌ توکن و Gist ID رو کامل وارد کن');
+    return false;
+  }
+  const oldToken = ghToken, oldGist = ghGistId;
+  ghToken = trimmedToken; ghGistId = trimmedGist;
+  const cloud = await cloudPull();
+  if(cloud===null && syncStatus==='error'){
+    ghToken = oldToken; ghGistId = oldGist;
+    showToast('❌ وصل نشد — توکن یا Gist ID رو چک کن (کنسول مرورگر F12 رو هم ببین)');
+    return false;
+  }
+  try{ localStorage.setItem(GH_TOKEN_KEY, ghToken); localStorage.setItem(GH_GIST_KEY, ghGistId); }catch(e){}
+  if(cloud && typeof cloud==='object'){
+    state = cloud;
+    applyStateDefaults();
+  }
+  localSave();
+  render();
+  showToast(cloud ? '✅ اطلاعات از Gist آورده شد' : '✅ این دستگاه وصل شد');
+  return true;
+}
+function unlinkSync(){
+  ghToken = null; ghGistId = null;
+  try{ localStorage.removeItem(GH_TOKEN_KEY); localStorage.removeItem(GH_GIST_KEY); }catch(e){}
+  syncStatus = 'idle';
+  updateSyncIndicator();
+}
+async function initCloudSync(){
+  if(hasWindowStorage()) return; // Artifact Storage already handles sync in that context
+  if(!ghAuth()) return;
+  const cloud = await cloudPull();
+  if(!cloud || typeof cloud!=='object') return;
+  const cloudTime = cloud._updatedAt || 0;
+  const localTime = state._updatedAt || 0;
+  if(cloudTime > localTime){
+    state = cloud;
+    applyStateDefaults();
+    localSave();
+    render();
+    showToast('☁️ آخرین نسخه از Gist آورده شد');
+  } else if(localTime > cloudTime){
+    cloudPush();
+  }
+}
+function openSyncModal(){
+  const overlay = document.getElementById('overlay');
+  const modal = document.getElementById('modal');
+  let html = '<h3>☁️ همگام‌سازی با GitHub Gist</h3>';
+  html += '<p class="msub">اطلاعات توی یه Gist خصوصی (private) توی حساب گیت‌هاب خودت ذخیره می‌شه. یه Personal Access Token با اجازه‌ی <code style="background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:5px;">gist</code> لازم داری — یه بار روی هر دستگاه (مثل آیپدت) واردش می‌کنی و همون‌جا ذخیره می‌مونه.</p>';
+  const auth = ghAuth();
+  if(auth){
+    html += '<div class="sync-code-box"><div class="sync-code-label">این دستگاه وصله ✓</div><div class="sync-code-value" style="font-size:14px;word-break:break-all;">Gist ID: '+ghGistId+'</div></div>';
+    html += '<div class="msub">این Gist ID رو (همراه با توکن) روی دستگاه‌های دیگه‌ت هم وارد کن تا وصل بشن:</div>';
+    html += '<div class="sync-link-box" id="sync-link-box">'+ghGistId+'</div>';
+    html += '<div class="modal-actions">'+
+      '<button id="sync-copy-code">📋 کپی Gist ID</button>'+
+      '<button id="sync-open-gist">🔗 باز کردن Gist</button>'+
+      '<button id="sync-now-btn">🔄 همین الان sync کن</button>'+
+      '<button id="sync-unlink-btn" class="danger-btn">قطع اتصال این دستگاه</button>'+
+    '</div>';
+  } else {
+    html += '<div class="add-row"><input type="password" id="sync-token-input" placeholder="GitHub Personal Access Token (با اسکوپ gist)..." autocomplete="off"></div>';
+    html += '<div class="modal-actions" style="margin:12px 0;"><button id="sync-create-btn">🆕 ساخت Gist جدید و شروع (این دستگاه اول)</button></div>';
+    html += '<p class="msub" style="margin:18px 0 6px;">یا اگه از قبل روی دستگاه دیگه‌ای Gist ساختی، همون Gist ID رو هم اینجا بذار:</p>';
+    html += '<div class="add-row"><input type="text" id="sync-gist-input" placeholder="Gist ID یا لینک گیست رو اینجا بچسبون..."><button id="sync-link-btn">وصل کن</button></div>';
+    html += '<p class="msub" style="margin-top:16px;font-size:11px;line-height:2;">🔑 برای ساخت توکن: برو به <a href="https://github.com/settings/tokens/new?scopes=gist&description=Residency%20Calendar%20Sync" target="_blank" rel="noopener" style="color:var(--p-sky-t);">github.com/settings/tokens/new</a>، فقط تیک <code style="background:var(--bg);border:1px solid var(--border);padding:0 5px;border-radius:5px;">gist</code> رو بزن، بسازش، و اینجا paste کن. توکن فقط توی حافظه‌ی همین مرورگر (localStorage) می‌مونه و جایی فرستاده نمی‌شه جز به خودِ api.github.com.</p>';
+  }
+  html += '<div class="modal-actions" style="margin-top:16px;"><button id="sync-close-btn">بستن</button></div>';
+  modal.innerHTML = html;
+  overlay.classList.add('open');
+  const closeBtn = document.getElementById('sync-close-btn');
+  if(closeBtn) closeBtn.addEventListener('click', closeModal);
+  const createBtn = document.getElementById('sync-create-btn');
+  if(createBtn) createBtn.addEventListener('click', async ()=>{
+    const tokenInput = document.getElementById('sync-token-input');
+    const token = tokenInput ? tokenInput.value.trim() : '';
+    if(!token){ showToast('⚠️ اول توکن رو وارد کن'); return; }
+    createBtn.disabled = true; createBtn.textContent = '...';
+    const id = await createGist(token);
+    if(id){ showToast('✅ Gist ساخته و وصل شد'); openSyncModal(); }
+    else { showToast('❌ نشد — توکن یا اسکوپ gist رو چک کن (کنسول F12 رو هم ببین)'); createBtn.disabled=false; createBtn.textContent='🆕 ساخت Gist جدید و شروع (این دستگاه اول)'; }
+  });
+  const linkBtn = document.getElementById('sync-link-btn');
+  if(linkBtn) linkBtn.addEventListener('click', async ()=>{
+    const tokenInput = document.getElementById('sync-token-input');
+    const gistInput = document.getElementById('sync-gist-input');
+    const token = tokenInput ? tokenInput.value.trim() : '';
+    const gistId = gistInput ? gistInput.value.trim() : '';
+    if(!token){ showToast('⚠️ اول توکن رو وارد کن'); return; }
+    if(!gistId) return;
+    if(state.topics && Object.values(state.topics).some(a=>a.length) && !confirm('این کار اطلاعات همین دستگاه رو با نسخه‌ی Gist جایگزین می‌کنه (اگه Gist چیزی داشته باشه). مطمئنی؟')) return;
+    linkBtn.disabled = true;
+    const ok = await linkExistingGist(token, gistId);
+    if(ok) openSyncModal();
+    else linkBtn.disabled = false;
+  });
+  const copyBtn = document.getElementById('sync-copy-code');
+  if(copyBtn) copyBtn.addEventListener('click', ()=>{
+    navigator.clipboard && navigator.clipboard.writeText(ghGistId).then(()=> showToast('📋 Gist ID کپی شد'));
+  });
+  const openGistBtn = document.getElementById('sync-open-gist');
+  if(openGistBtn) openGistBtn.addEventListener('click', ()=>{
+    window.open('https://gist.github.com/'+ghGistId, '_blank', 'noopener');
+  });
+  const syncNowBtn = document.getElementById('sync-now-btn');
+  if(syncNowBtn) syncNowBtn.addEventListener('click', async ()=>{
+    syncNowBtn.disabled = true;
+    await cloudPush();
+    showToast(syncStatus==='synced' ? '✅ sync شد' : '⚠️ الان وصل نشد — کنسول رو چک کن');
+    syncNowBtn.disabled = false;
+  });
+  const unlinkBtn = document.getElementById('sync-unlink-btn');
+  if(unlinkBtn) unlinkBtn.addEventListener('click', ()=>{
+    if(!confirm('اتصال این دستگاه به Gist قطع بشه؟ خودِ Gist و اطلاعاتش پاک نمی‌شه، فقط این دستگاه دیگه خودکار sync نمی‌کنه.')) return;
+    unlinkSync();
+    openSyncModal();
+  });
+}
 function dayKey(seq){ return 'd'+seq; }
 function reviewKey(sourceSeq, offset){ return 'r'+sourceSeq+'_'+offset; }
 function deletedKey(name, subject){ return name+'::'+(subject||''); }
@@ -2192,9 +2424,9 @@ function reorderSubtasksOf(seq, i, newIdOrder){
 function getMeta(seq, i){
   const k = dayKey(seq);
   if(!state.meta[k]) state.meta[k] = {};
-  return state.meta[k][i] || {rounds:0, time:'', link:'', stations:0};
+  return state.meta[k][i] || {rounds:0, time:'', link:'', stations:0, testDone:false, hasSummary:false};
 }
-function setMeta(seq, i, rounds, time, link, stations){
+function setMeta(seq, i, rounds, time, link, stations, testDone, hasSummary){
   const k = dayKey(seq);
   if(!state.meta[k]) state.meta[k] = {};
   const prev = state.meta[k][i] || {};
@@ -2202,7 +2434,9 @@ function setMeta(seq, i, rounds, time, link, stations){
     rounds: rounds!==undefined ? (rounds||0) : (prev.rounds||0),
     time: time!==undefined ? (time||'') : (prev.time||''),
     link: link!==undefined ? (link||'') : (prev.link||''),
-    stations: stations!==undefined ? (stations||0) : (prev.stations||0)
+    stations: stations!==undefined ? (stations||0) : (prev.stations||0),
+    testDone: testDone!==undefined ? !!testDone : !!prev.testDone,
+    hasSummary: hasSummary!==undefined ? !!hasSummary : !!prev.hasSummary
   };
 }
 function minutesFor(rounds){
@@ -2428,12 +2662,14 @@ function load(){
   save();
   render();
   initArtifactStorage();
+  initCloudSync();
 }
 function localSave(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
 function save(){
   state._updatedAt = Date.now();
   localSave();
   queueWsPush();
+  queueCloudPush();
 }
 function todayKey(){ return new Date().toISOString().slice(0,10); }
 function dayProgress(d){
@@ -3136,10 +3372,12 @@ function collectRoundLog(){
     const topics = state.topics[k] || [];
     topics.forEach((t,i)=>{
       const meta = getMeta(seq, i);
-      if(!meta.rounds) return;
+      if(!meta.rounds && !meta.testDone && !meta.hasSummary) return;
       const {name, subject} = parseTopic(t);
-      if(!out[name]) out[name] = {name, subject: subject||'', rounds:0};
-      out[name].rounds += meta.rounds;
+      if(!out[name]) out[name] = {name, subject: subject||'', rounds:0, testDone:false, hasSummary:false};
+      out[name].rounds += (meta.rounds||0);
+      if(meta.testDone) out[name].testDone = true;
+      if(meta.hasSummary) out[name].hasSummary = true;
     });
   });
   return Object.values(out).sort((a,b)=> b.rounds - a.rounds || a.name.localeCompare(b.name,'fa'));
@@ -3151,13 +3389,15 @@ function renderRoundLogPage(){
   let rows = collectRoundLog();
   if(q) rows = rows.filter(r=> r.name.toLowerCase().includes(q) || (r.subject||'').toLowerCase().includes(q));
   if(!rows.length){
-    entriesEl.innerHTML = '<div class="links-empty">'+(q? 'چیزی پیدا نشد 🔎' : 'هنوز هیچ دوری ثبت نشده — توی مودال هر روز، جلوی هر مبحث می‌تونی تعداد دور رو وارد کنی.')+'</div>';
+    entriesEl.innerHTML = '<div class="links-empty">'+(q? 'چیزی پیدا نشد 🔎' : 'هنوز چیزی ثبت نشده — توی مودال هر روز، جلوی هر مبحث می‌تونی تعداد دور، تست‌زدن و خلاصه‌داشتن رو ثبت کنی.')+'</div>';
     return;
   }
   entriesEl.innerHTML = rows.map(r=>
     '<div class="link-entry">'+
       '<span class="link-entry-name">'+r.name+(r.subject? ' <span style="color:var(--text2);font-weight:400;">('+r.subject+')</span>':'')+'</span>'+
-      '<span class="round-log-count">'+r.rounds+' دور</span>'+
+      (r.rounds ? '<span class="round-log-count">'+r.rounds+' دور</span>' : '')+
+      '<span class="round-log-badge'+(r.testDone?' active':'')+'" title="تست زده شده؟">'+(r.testDone?'✅ تست':'○ تست')+'</span>'+
+      '<span class="round-log-badge'+(r.hasSummary?' active':'')+'" title="خلاصه داره؟">'+(r.hasSummary?'📝 خلاصه':'○ خلاصه')+'</span>'+
     '</div>'
   ).join('');
 }
@@ -3472,6 +3712,11 @@ function openModal(d){
       '<label class="meta-field">تعداد ایستگاه<input type="number" min="0" step="1" class="meta-input" data-meta-station="'+i+'" value="'+(meta.stations||'')+'" placeholder="0"></label>'+
       '<span class="meta-divider"></span>'+
       '<label class="meta-field">زمان تخمینی<span class="meta-time-display" data-meta-time-display="'+i+'">'+(formatMinutes(estimatedMinutesForStations(meta.stations, prio))||'—')+'</span></label>'+
+      '<span class="meta-divider"></span>'+
+      '<div class="meta-toggles">'+
+        '<button type="button" class="meta-toggle-chip'+(meta.testDone?' active':'')+'" data-meta-test="'+i+'" title="آیا تست این مبحث رو زدی؟">✅ تست زدم</button>'+
+        '<button type="button" class="meta-toggle-chip'+(meta.hasSummary?' active':'')+'" data-meta-summary="'+i+'" title="آیا از این مبحث خلاصه داری؟">📝 خلاصه دارم</button>'+
+      '</div>'+
     '</div>'+
     '<div class="link-row">'+
       '<span class="link-row-icon">🔗</span>'+
@@ -3779,6 +4024,24 @@ function openModal(d){
       setMeta(d.seq, i, undefined, formatMinutes(mins), undefined, stations);
       const display = modal.querySelector('[data-meta-time-display="'+i+'"]');
       if(display) display.textContent = formatMinutes(mins) || '—';
+      save();
+    });
+  });
+  modal.querySelectorAll('[data-meta-test]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.getAttribute('data-meta-test');
+      const m = getMeta(d.seq, i);
+      setMeta(d.seq, i, undefined, undefined, undefined, undefined, !m.testDone, undefined);
+      e.target.classList.toggle('active', !m.testDone);
+      save();
+    });
+  });
+  modal.querySelectorAll('[data-meta-summary]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.getAttribute('data-meta-summary');
+      const m = getMeta(d.seq, i);
+      setMeta(d.seq, i, undefined, undefined, undefined, undefined, undefined, !m.hasSummary);
+      e.target.classList.toggle('active', !m.hasSummary);
       save();
     });
   });
@@ -4163,11 +4426,17 @@ document.getElementById('wheel-overlay').addEventListener('click', e=>{
 });
 document.getElementById('wheel-open-btn').addEventListener('click', openWheel);
 document.getElementById('sync-btn').addEventListener('click', async ()=>{
-  if(!hasWindowStorage()){ showToast('⚠️ Artifact Storage در دسترس نیست — این صفحه باید به‌صورت آرتیفکت داخل Claude.ai باز شده باشه تا بین دستگاه‌ها sync بشه.'); return; }
-  await initArtifactStorage();
-  const ok = (document.getElementById('ws-status')||{}).textContent === 'ذخیره شد ✓';
-  showToast(ok ? '✅ با فضای ذخیره‌سازی آرتیفکت sync شد' : '⚠️ الان وصل نشد — دوباره امتحان می‌کنه');
+  if(hasWindowStorage()){
+    // Running inside Claude.ai as an artifact — use Artifact Storage.
+    await initArtifactStorage();
+    const ok = (document.getElementById('ws-status')||{}).textContent === 'ذخیره شد ✓';
+    showToast(ok ? '✅ با فضای ذخیره‌سازی آرتیفکت sync شد' : '⚠️ الان وصل نشد — دوباره امتحان می‌کنه');
+    return;
+  }
+  // Hosted elsewhere (e.g. GitHub Pages) — use the GitHub Gist token-based sync.
+  openSyncModal();
 });
+updateSyncIndicator();
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){ closeModal(); closeWheel(); }
   if(e.key==='/' && document.activeElement.tagName!=='INPUT'){
